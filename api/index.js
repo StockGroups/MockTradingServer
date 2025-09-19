@@ -198,13 +198,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// 跨域配置
+// 跨域配置（核心优化：支持多域名）
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://localhost:8080'];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS禁止访问：不允许的源 ${origin}`));
+    }
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
   credentials: true,
-  maxAge: 86400 // 预检请求缓存时间（24小时）
+  maxAge: 86400
 }));
 
 app.use(bodyParser.json());
@@ -737,11 +747,13 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
-// 根路由测试
+// 根路由测试（优化：添加允许的跨域域名打印）
 app.get('/', (req, res) => {
   res.json({ 
     message: '股票交易API服务运行中',
     database: 'PostgreSQL',
+    environment: process.env.NODE_ENV || 'development',
+    allowedOrigins: allowedOrigins, // 便于调试的配置信息
     endpoints: {
       stocks: '/api/stocks',
       updatePrice: '/api/stocks/update-price',
