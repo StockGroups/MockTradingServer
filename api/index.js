@@ -14,7 +14,8 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20, // 连接池最大连接数
-  idleTimeoutMillis: 30000 // 连接空闲超时时间
+  idleTimeoutMillis: 30000, // 连接空闲超时时间
+  connectionTimeoutMillis: 5000 // 连接超时时间
 });
 
 // 工具函数：日志记录
@@ -76,9 +77,9 @@ async function initDatabase() {
         stockId TEXT NOT NULL,
         stockName TEXT NOT NULL,
         quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-        averagePrice REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        averagePrice REAL NOT REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (stockId) REFERENCES stocks(id),
         UNIQUE(stockId)
       );
@@ -91,11 +92,11 @@ async function initDatabase() {
         type TEXT NOT NULL CHECK (type IN ('buy', 'sell')),
         stockId TEXT NOT NULL,
         stockName TEXT NOT NULL,
-        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        quantity INTEGER INTEGER INTEGER NOT NULL CHECK (quantity > 0),
         price REAL NOT NULL CHECK (price > 0),
         total REAL NOT NULL CHECK (total > 0),
         profitLoss REAL,
-        timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        timestamp TIMESTAMP WITH TIME ZONE NOT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (stockId) REFERENCES stocks(id)
       );
     `);
@@ -198,25 +199,42 @@ app.use((req, res, next) => {
   next();
 });
 
-// 跨域配置（核心优化：支持多域名）
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:5173', 'http://localhost:8080'];
+// ===================== 核心修复：CORS 配置 =====================
+// 跨域配置（解决原动态校验逻辑问题）
+const baseAllowedOrigins = [
+  'https://stockgroups.github.io', // 线上前端域名（必须准确）
+  'http://localhost:5173',         // 本地调试端口
+  'http://localhost:8080',         // Uniapp常见调试端口
+  'http://127.0.0.1:5173'          // 兼容IP形式的本地请求
+];
 
-app.use(cors({
+// 合并环境变量中的域名
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? [...new Set([...baseAllowedOrigins, ...process.env.ALLOWED_ORIGINS.split(',')])]
+  : baseAllowedOrigins;
+
+const corsOptions = {
   origin: (origin, callback) => {
+    // 允许规则：无origin、在允许列表内、本地localhost开头
     if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
-      callback(null, true);
+      callback(null, origin || '*'); // 关键修复：返回具体origin而非true
     } else {
-      callback(new Error(`CORS禁止访问：不允许的源 ${origin}`));
+      callback(new Error(`CORS 禁止访问：不允许的源 ${origin}`));
     }
   },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
   credentials: true,
   maxAge: 86400
-}));
+};
 
+// 应用CORS中间件
+app.use(cors(corsOptions));
+
+// 处理OPTIONS预检请求
+app.options('*', cors(corsOptions));
+
+// 解析请求体
 app.use(bodyParser.json());
 
 // 输入验证工具函数
@@ -228,6 +246,9 @@ const validateStockId = (stockId) => {
 };
 
 const validateQuantity = (quantity) => {
+  if (typeof quantity !== 'number' && (typeof quantity !== 'string' || isNaN(quantity))) {
+    return { valid: false, message: '股票数量必须是有效数字' };
+  }
   const parsed = parseInt(quantity, 10);
   if (isNaN(parsed) || parsed <= 0 || parsed % 100 !== 0) {
     return { 
@@ -240,6 +261,9 @@ const validateQuantity = (quantity) => {
 };
 
 const validatePrice = (price) => {
+  if (typeof price !== 'number' && (typeof price !== 'string' || isNaN(price))) {
+    return { valid: false, message: '价格必须是有效数字' };
+  }
   const parsed = parseFloat(price);
   if (isNaN(parsed) || parsed <= 0) {
     return { 
@@ -747,7 +771,7 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
-// 根路由测试（优化：添加允许的跨域域名打印）
+// 根路由测试
 app.get('/', (req, res) => {
   res.json({ 
     message: '股票交易API服务运行中',
@@ -793,7 +817,7 @@ async function startServer() {
     app.listen(PORT, () => {
       log(`服务运行在 http://localhost:${PORT}`);
       log(`环境: ${process.env.NODE_ENV || 'development'}`);
-      log(`前端允许跨域地址: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+      log(`允许跨域地址: ${allowedOrigins.join(', ')}`);
     });
   } catch (error) {
     logError('启动服务失败', error);
