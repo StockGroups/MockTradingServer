@@ -5,6 +5,9 @@ https://vercel.com/
 
 npm install
 npm install cors@2.8.5 --save 
+npm install express cors body-parser pg uuid bcrypt jsonwebtoken express-rate-limit winston dotenv
+
+https://get.enterprisedb.com/postgresql/postgresql-17.6-1-windows-x64.exe
 
 https://mock-trading-server.vercel.app/api
 
