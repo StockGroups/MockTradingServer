@@ -2,13 +2,9 @@ https://blog.csdn.net/zouhai1/article/details/145238089
 
 https://vercel.com/
 
-npm init -y
 
-npm install express
-
-
-vercel dev 
-
+npm install
+npm install cors@2.8.5 --save 
 
 https://mock-trading-server.vercel.app/api
 
