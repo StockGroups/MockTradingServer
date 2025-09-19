@@ -5,11 +5,14 @@
   "main": "api/index.js",
   "scripts": {
     "dev": "node api/index.js",
-    "start": "node api/index.js"
+    "start": "node api/index.js",
+    "init:db": "node db/init.js"
   },
   "dependencies": {
+    "better-sqlite3": "^9.6.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "sqlite3": "^5.1.7",
     "uuid": "^9.0.0"
   }
 }
