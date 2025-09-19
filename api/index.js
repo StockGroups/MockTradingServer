@@ -77,9 +77,9 @@ async function initDatabase() {
         stockId TEXT NOT NULL,
         stockName TEXT NOT NULL,
         quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-        averagePrice REAL NOT REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT DEFAULT CURRENT_TIMESTAMP,
+        averagePrice REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (stockId) REFERENCES stocks(id),
         UNIQUE(stockId)
       );
@@ -92,11 +92,11 @@ async function initDatabase() {
         type TEXT NOT NULL CHECK (type IN ('buy', 'sell')),
         stockId TEXT NOT NULL,
         stockName TEXT NOT NULL,
-        quantity INTEGER INTEGER INTEGER NOT NULL CHECK (quantity > 0),
+        quantity INTEGER NOT NULL CHECK (quantity > 0),
         price REAL NOT NULL CHECK (price > 0),
         total REAL NOT NULL CHECK (total > 0),
         profitLoss REAL,
-        timestamp TIMESTAMP WITH TIME ZONE NOT DEFAULT CURRENT_TIMESTAMP,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (stockId) REFERENCES stocks(id)
       );
     `);
@@ -771,7 +771,7 @@ app.post('/api/reset', async (req, res) => {
   }
 });
 
-// 根路由测试
+// 根路由测试（优化：添加允许的跨域域名打印）
 app.get('/', (req, res) => {
   res.json({ 
     message: '股票交易API服务运行中',
