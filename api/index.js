@@ -14,10 +14,7 @@ const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
   // 关键配置：处理 SSL 证书验证
   ssl: {
-    // 使用 Vercel 环境内置的根证书（无需手动指定 CA）
-    rejectUnauthorized: true,
-    // 针对 Supabase 的特殊配置（解决证书链问题）
-    sslmode: 'verify-full'
+    rejectUnauthorized: false // 允许自签名证书
   }
 });
 
