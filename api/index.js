@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 // 配置PostgreSQL连接池
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20, // 连接池最大连接数
   idleTimeoutMillis: 30000, // 连接空闲超时时间
