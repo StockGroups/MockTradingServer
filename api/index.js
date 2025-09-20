@@ -10,13 +10,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // 初始化数据库连接池
-const pool = new Pool({
+/*const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,
   // 关键配置：处理 SSL 证书验证
   ssl: {
     rejectUnauthorized: false // 允许自签名证书
   }
-});
+});*/
+const pool = new Pool(
+  {
+    tls: { enabled: false },
+    database: process.env.POSTGRES_DATABASE,
+    hostname: process.env.POSTGRES_HOST,
+    user: process.env.POSTGRES_USER,
+    port: 6543,
+    password: process.env.POSTGRES_PASSWORD,
+  },
+  1
+)
 
 // 工具函数：日志记录
 const log = (message, data = {}) => {
