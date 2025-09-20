@@ -11,17 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 // 替换原 Pool 配置中的 ssl 字段
 const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL,
-  // 优化：仅生产环境（Vercel）启用 SSL，本地开发禁用
-  ssl: process.env.NODE_ENV === 'production' 
-    ? { 
-        sslmode: 'require', 
-        rejectUnauthorized: false  // 兼容 Vercel Postgres 证书
-      } 
-    : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000
+  connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL
 });
 
 // 工具函数：日志记录
