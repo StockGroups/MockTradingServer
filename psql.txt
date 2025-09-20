@@ -1,72 +1,239 @@
--- 1. 创建所有必需的表（强制创建，忽略已存在的表）
-CREATE TABLE IF NOT EXISTS public.stocks (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  price REAL NOT NULL DEFAULT 0.01,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+-- 删除现有表（如果存在）
+DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS portfolio CASCADE;
+DROP TABLE IF EXISTS user_funds CASCADE;
+DROP TABLE IF EXISTS stocks CASCADE;
+
+-- 创建股票表
+CREATE TABLE stocks (
+    id VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public."user" (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  balance REAL NOT NULL DEFAULT 100000.00,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(id)
+-- 创建用户资金表
+CREATE TABLE user_funds (
+    id SERIAL PRIMARY KEY,
+    balance DECIMAL(15, 2) NOT NULL DEFAULT 100000.00,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS public.portfolio (
-  id SERIAL PRIMARY KEY,
-  stockId TEXT NOT NULL,
-  stockName TEXT NOT NULL,
-  quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-  averagePrice REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (stockId) REFERENCES public.stocks(id),
-  UNIQUE(stockId)
+-- 创建投资组合表
+CREATE TABLE portfolio (
+    id SERIAL PRIMARY KEY,
+    stock_id VARCHAR(20) REFERENCES stocks(id),
+    stock_name VARCHAR(100) NOT NULL,
+    quantity INTEGER NOT NULL,
+    average_price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(stock_id)
 );
 
-CREATE TABLE IF NOT EXISTS public.transactions (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL CHECK (type IN ('buy', 'sell')),
-  stockId TEXT NOT NULL,
-  stockName TEXT NOT NULL,
-  quantity INTEGER NOT NULL CHECK (quantity > 0),
-  price REAL NOT NULL CHECK (price > 0),
-  total REAL NOT NULL CHECK (total > 0),
-  profitLoss REAL,
-  timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (stockId) REFERENCES public.stocks(id)
+-- 创建交易记录表
+CREATE TABLE transactions (
+    id UUID PRIMARY KEY,
+    type VARCHAR(10) NOT NULL CHECK (type IN ('buy', 'sell')),
+    stock_id VARCHAR(20) NOT NULL,
+    stock_name VARCHAR(100) NOT NULL,
+    quantity INTEGER NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    total DECIMAL(15, 2) NOT NULL,
+    profit_loss DECIMAL(15, 2),
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 2. 插入默认股票数据（确保 stocks 表有数据）
-INSERT INTO public.stocks (id, name, price) VALUES
-  ('600036', '招商银行', 32.65),
-  ('601318', '中国平安', 42.80),
-  ('600519', '贵州茅台', 1725.00),
-  ('000858', '五粮液', 168.50),
-  ('000333', '美的集团', 56.30),
-  ('600028', '中国石化', 4.38),
-  ('601899', '紫金矿业', 9.82),
-  ('002594', '比亚迪', 258.60),
-  ('601012', '隆基绿能', 38.45),
-  ('600900', '长江电力', 22.76)
-ON CONFLICT (id) DO NOTHING; -- 若已存在则不重复插入
+-- 插入A股股票数据
+INSERT INTO stocks (id, name, price) VALUES
+('000001', '平安银行', 15.20),
+('000002', '万科A', 18.50),
+('000063', '中兴通讯', 32.80),
+('000066', '中国长城', 12.40),
+('000100', 'TCL科技', 4.20),
+('000157', '中联重科', 6.80),
+('000333', '美的集团', 55.60),
+('000338', '潍柴动力', 12.90),
+('000425', '徐工机械', 5.70),
+('000568', '泸州老窖', 220.50),
+('000625', '长安汽车', 15.80),
+('000651', '格力电器', 36.40),
+('000725', '京东方A', 3.80),
+('000768', '中航西飞', 25.60),
+('000858', '五粮液', 165.30),
+('000876', '新希望', 12.10),
+('000895', '双汇发展', 25.80),
+('000938', '紫光股份', 18.90),
+('000977', '浪潮信息', 28.70),
+('002024', '苏宁易购', 2.10),
+('002027', '分众传媒', 6.50),
+('002049', '紫光国微', 88.60),
+('002050', '三花智控', 21.30),
+('002129', '中环股份', 42.80),
+('002142', '宁波银行', 28.90),
+('002230', '科大讯飞', 45.20),
+('002241', '歌尔股份', 18.70),
+('002304', '洋河股份', 132.40),
+('002352', '顺丰控股', 48.90),
+('002371', '北方华创', 256.80),
+('002415', '海康威视', 32.50),
+('002475', '立讯精密', 29.80),
+('002594', '比亚迪', 245.60),
+('002601', '龙蟒佰利', 18.90),
+('002607', '中公教育', 4.20),
+('002714', '牧原股份', 39.80),
+('002736', '国信证券', 9.20),
+('002812', '恩捷股份', 68.50),
+('300015', '爱尔眼科', 18.90),
+('300059', '东方财富', 15.40),
+('300122', '智飞生物', 45.60),
+('300124', '汇川技术', 62.80),
+('300142', '沃森生物', 28.90),
+('300144', '宋城演艺', 11.20),
+('300347', '泰格医药', 68.90),
+('300498', '温氏股份', 18.70),
+('300750', '宁德时代', 168.50),
+('600000', '浦发银行', 7.20),
+('600009', '上海机场', 38.90),
+('600010', '包钢股份', 1.80),
+('600016', '民生银行', 3.80),
+('600019', '宝钢股份', 6.50),
+('600028', '中国石化', 4.90),
+('600029', '南方航空', 6.20),
+('600030', '中信证券', 20.80),
+('600031', '三一重工', 15.60),
+('600036', '招商银行', 32.90),
+('600048', '保利发展', 11.80),
+('600050', '中国联通', 4.50),
+('600056', '中国医药', 12.90),
+('600061', '国投资本', 7.20),
+('600066', '宇通客车', 10.80),
+('600068', '葛洲坝', 7.90),
+('600085', '同仁堂', 45.60),
+('600104', '上汽集团', 15.20),
+('600109', '国金证券', 8.90),
+('600111', '北方稀土', 25.40),
+('600115', '中国东航', 4.80),
+('600118', '中国卫星', 22.10),
+('600150', '中国船舶', 25.60),
+('600176', '中国巨石', 13.80),
+('600188', '兖矿能源', 22.50),
+('600196', '复星医药', 26.80),
+('600276', '恒瑞医药', 32.90),
+('600309', '万华化学', 78.50),
+('600340', '华夏幸福', 2.10),
+('600346', '恒力石化', 15.80),
+('600362', '江西铜业', 18.90),
+('600406', '国电南瑞', 23.40),
+('600436', '片仔癀', 245.80),
+('600438', '通威股份', 32.60),
+('600482', '中国动力', 16.20),
+('600487', '亨通光电', 14.80),
+('600519', '贵州茅台', 1720.50),
+('600536', '中国软件', 28.90),
+('600547', '山东黄金', 20.80),
+('600570', '恒生电子', 32.40),
+('600585', '海螺水泥', 25.60),
+('600588', '用友网络', 18.90),
+('600606', '绿地控股', 2.80),
+('600637', '东方明珠', 7.90),
+('600660', '福耀玻璃', 35.20),
+('600690', '海尔智家', 22.80),
+('600703', '三安光电', 15.60),
+('600705', '中航产融', 3.20),
+('600741', '华域汽车', 16.90),
+('600745', '闻泰科技', 42.80),
+('600795', '国电电力', 3.80),
+('600809', '山西汾酒', 245.60),
+('600837', '海通证券', 9.20),
+('600848', '上海临港', 12.60),
+('600867', '通化东宝', 9.80),
+('600886', '国投电力', 11.20),
+('600887', '伊利股份', 28.50),
+('600893', '航发动力', 38.90),
+('600900', '长江电力', 21.80),
+('600919', '江苏银行', 7.20),
+('600958', '东方证券', 8.90),
+('600999', '招商证券', 13.80),
+('601006', '大秦铁路', 6.90),
+('601012', '隆基绿能', 21.50),
+('601018', '宁波港', 3.40),
+('601066', '中信建投', 23.80),
+('601088', '中国神华', 29.60),
+('601108', '财通证券', 7.20),
+('601111', '中国国航', 8.50),
+('601138', '工业富联', 18.90),
+('601166', '兴业银行', 16.20),
+('601169', '北京银行', 4.50),
+('601186', '中国铁建', 8.20),
+('601198', '东兴证券', 8.90),
+('601211', '国泰君安', 14.20),
+('601216', '君正集团', 4.10),
+('601225', '陕西煤业', 18.90),
+('601238', '广汽集团', 10.80),
+('601288', '农业银行', 3.20),
+('601318', '中国平安', 45.60),
+('601328', '交通银行', 5.40),
+('601336', '新华保险', 28.90),
+('601360', '三六零', 8.20),
+('601398', '工商银行', 4.80),
+('601601', '中国太保', 23.50),
+('601628', '中国人寿', 28.40),
+('601633', '长城汽车', 23.80),
+('601658', '邮储银行', 4.90),
+('601668', '中国建筑', 5.20),
+('601688', '华泰证券', 13.80),
+('601766', '中国中车', 5.60),
+('601800', '中国交建', 7.90),
+('601818', '光大银行', 3.10),
+('601857', '中国石油', 6.80),
+('601866', '中远海发', 2.60),
+('601877', '正泰电器', 21.90),
+('601888', '中国中免', 85.60),
+('601898', '中煤能源', 8.20),
+('601899', '紫金矿业', 12.50),
+('601901', '方正证券', 6.90),
+('601916', '浙商银行', 2.80),
+('601919', '中远海控', 10.20),
+('601933', '永辉超市', 3.40),
+('601939', '建设银行', 5.90),
+('601985', '中国核电', 7.20),
+('601988', '中国银行', 3.60),
+('601989', '中国重工', 4.10),
+('601992', '金隅集团', 2.40),
+('601998', '中信银行', 5.20),
+('603000', '人民网', 18.90),
+('603160', '汇顶科技', 52.80),
+('603259', '药明康德', 68.90),
+('603288', '海天味业', 38.50),
+('603501', '韦尔股份', 85.60),
+('603799', '华友钴业', 42.80),
+('603833', '欧派家居', 92.10),
+('603858', '步长制药', 18.90),
+('603899', '晨光股份', 45.60),
+('603986', '兆易创新', 98.70),
+('603993', '洛阳钼业', 5.20),
+('688008', '澜起科技', 58.90),
+('688009', '中国通号', 5.40),
+('688019', '安集科技', 145.60),
+('688036', '传音控股', 78.90),
+('688111', '金山办公', 285.40),
+('688126', '沪硅产业', 18.90),
+('688169', '石头科技', 285.60),
+('688180', '君实生物', 42.80),
+('688363', '华熙生物', 85.90),
+('688396', '华润微', 42.60),
+('688561', '奇安信', 38.90),
+('688599', '天合光能', 32.80),
+('688981', '中芯国际', 42.50);
 
--- 3. 插入默认用户数据（确保 user 表有数据）
-INSERT INTO public."user" (id, balance) VALUES (1, 100000.00)
-ON CONFLICT (id) DO NOTHING;
+-- 初始化用户资金（初始资金10万元）
+INSERT INTO user_funds (balance) VALUES (100000.00);
 
-
--- 创建用于执行动态SQL的函数
-CREATE OR REPLACE FUNCTION public.exec_sql(sql text)
-RETURNS void AS $$
-BEGIN
-  -- 执行传入的SQL语句
-  EXECUTE sql;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- 授予执行权限（允许匿名用户和已认证用户调用）
-GRANT EXECUTE ON FUNCTION public.exec_sql(text) TO anon, authenticated;
+-- 创建索引以提高查询性能
+CREATE INDEX idx_portfolio_stock_id ON portfolio(stock_id);
+CREATE INDEX idx_transactions_stock_id ON transactions(stock_id);
+CREATE INDEX idx_transactions_timestamp ON transactions(timestamp DESC);
+CREATE INDEX idx_stocks_id ON stocks(id);
