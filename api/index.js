@@ -9,9 +9,16 @@ require('dotenv').config({ path: '.env.local' });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 替换原 Pool 配置中的 ssl 字段
+// 初始化数据库连接池
 const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL || process.env.DATABASE_URL
+  connectionString: process.env.POSTGRES_URL,
+  // 关键配置：处理 SSL 证书验证
+  ssl: {
+    // 使用 Vercel 环境内置的根证书（无需手动指定 CA）
+    rejectUnauthorized: true,
+    // 针对 Supabase 的特殊配置（解决证书链问题）
+    sslmode: 'verify-full'
+  }
 });
 
 // 工具函数：日志记录
