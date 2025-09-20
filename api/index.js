@@ -17,6 +17,7 @@ const PORT = process.env.PORT || 3000;
     rejectUnauthorized: false // 允许自签名证书
   }
 });*/
+console.log('=============', process.env.POSTGRES_DATABASE);
 const pool = new Pool(
   {
     tls: { enabled: false },
@@ -29,7 +30,6 @@ const pool = new Pool(
   1
 )
 
-console.log('=============', process.env.POSTGRES_DATABASE);
 // 工具函数：日志记录
 const log = (message, data = {}) => {
   console.log(`[${new Date().toISOString()}] ${message}`, Object.keys(data).length ? data : '');
