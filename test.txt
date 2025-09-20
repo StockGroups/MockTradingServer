@@ -1,0 +1,20 @@
+# 获取所有股票
+curl -X GET "https://mock-trading-server.vercel.app/api/stocks"
+
+# 更新股票价格（示例：更新股票代码为600000的价格为15.67）
+curl -X POST "https://mock-trading-server.vercel.app/api/stocks/update-price" -H "Content-Type: application/json" -d '{"stockId":"600000","price":15.67}'
+
+# 获取投资组合和资产信息
+curl -X GET "https://mock-trading-server.vercel.app/api/portfolio"
+
+# 买入股票（示例：买入600000股票100股，价格15.67）
+curl -X POST "https://mock-trading-server.vercel.app/api/buy" -H "Content-Type: application/json" -d '{"stockId":"600000","quantity":100,"price":15.67}'
+
+# 卖出股票（示例：卖出600000股票100股，价格16.88）
+curl -X POST "https://mock-trading-server.vercel.app/api/sell" -H "Content-Type: application/json" -d '{"stockId":"600000","quantity":100,"price":16.88}'
+
+# 获取交易记录
+curl -X GET "https://mock-trading-server.vercel.app/api/transactions"
+
+# 访问根路由
+curl -X GET "https://mock-trading-server.vercel.app/"
