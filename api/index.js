@@ -109,7 +109,7 @@ async function updateBalance(amount) {
       .from('user_funds')
       .update({ 
         balance: newBalance, 
-        updatedat: new Date()  // 使用小写
+        updated_at: new Date()  // 使用小写
       })
       .eq('id', 1)
       .select()
@@ -175,7 +175,7 @@ app.post('/api/stocks/update-price', async (req, res) => {
       .from('stocks')
       .update({ 
         price: priceCheck.parsed, 
-        updatedat: new Date()  // 使用小写
+        updated_at: new Date()  // 使用小写
       })
       .eq('id', stockId)
       .select()
@@ -222,18 +222,18 @@ app.get('/api/portfolio', async (req, res) => {
 
     let totalValue = 0, totalCost = 0, totalProfitLoss = 0;
     const stocksArr = (portfolio || []).map(h => {
-      const currentPrice = priceMap[h.stockid] || 0;
+      const currentPrice = priceMap[h.stock_id] || 0;
       const value = currentPrice * h.quantity;
-      const cost = h.averageprice * h.quantity;
+      const cost = h.average_price * h.quantity;
       const profitLoss = value - cost;
       totalValue += value;
       totalCost += cost;
       totalProfitLoss += profitLoss;
       return {
-        stockId: h.stockid,
-        stockName: h.stockname,
+        stockId: h.stock_id,
+        stockName: h.stock_name,
         quantity: h.quantity,
-        averagePrice: h.averageprice,
+        averagePrice: h.average_price,
         currentPrice,
         value: +value.toFixed(2),
         profitLoss: +profitLoss.toFixed(2),
@@ -307,7 +307,7 @@ app.post('/api/buy', async (req, res) => {
     const { data: holding, error: holdingError } = await supabase
       .from('portfolio')
       .select('*')
-      .eq('stockid', stockId)
+      .eq('stock_id', stockId)
       .single();
       
     if (holdingError && holdingError.code !== 'PGRST116') {
@@ -318,15 +318,15 @@ app.post('/api/buy', async (req, res) => {
     if (holding) {
       console.log('📝 更新现有持仓:', holding);
       const newQuantity = holding.quantity + parsedQuantity;
-      const newTotalCost = (holding.averageprice * holding.quantity) + totalCost;
+      const newTotalCost = (holding.average_price * holding.quantity) + totalCost;
       const newAveragePrice = newTotalCost / newQuantity;
       
       const { error: updateError } = await supabase
         .from('portfolio')
         .update({
           quantity: newQuantity,
-          averageprice: newAveragePrice,
-          updatedat: new Date()
+          average_price: newAveragePrice,
+          updated_at: new Date()
         })
         .eq('id', holding.id);
         
@@ -339,10 +339,10 @@ app.post('/api/buy', async (req, res) => {
       const { error: insertError } = await supabase
         .from('portfolio')
         .insert([{
-          stockid: stockId,
-          stockname: stock.name,
+          stock_id: stockId,
+          stock_name: stock.name,
           quantity: parsedQuantity,
-          averageprice: tradePrice
+          average_price: tradePrice
         }]);
         
       if (insertError) {
@@ -358,8 +358,8 @@ app.post('/api/buy', async (req, res) => {
       .insert([{
         id: txId,
         type: 'buy',
-        stockid: stockId,
-        stockname: stock.name,
+        stock_id: stockId,
+        stock_name: stock.name,
         quantity: parsedQuantity,
         price: tradePrice,
         total: totalCost,
@@ -417,7 +417,7 @@ app.post('/api/sell', async (req, res) => {
     const { data: holding, error: holdingError } = await supabase
       .from('portfolio')
       .select('*')
-      .eq('stockid', stockId)
+      .eq('stock_id', stockId)
       .single();
       
     if (holdingError) {
@@ -438,7 +438,7 @@ app.post('/api/sell', async (req, res) => {
       return res.status(400).json({ error: '持仓数量不足' });
     }
 
-    const profitLoss = +((tradePrice - holding.averageprice) * parsedQuantity).toFixed(2);
+    const profitLoss = +((tradePrice - holding.average_price) * parsedQuantity).toFixed(2);
     console.log(`📊 盈亏计算: ${profitLoss}`);
 
     await updateBalance(totalRevenue);
@@ -460,7 +460,7 @@ app.post('/api/sell', async (req, res) => {
         .from('portfolio')
         .update({
           quantity: holding.quantity - parsedQuantity,
-          updatedat: new Date()
+          updated_at: new Date()
         })
         .eq('id', holding.id);
         
@@ -477,12 +477,12 @@ app.post('/api/sell', async (req, res) => {
       .insert([{
         id: txId,
         type: 'sell',
-        stockid: stockId,
-        stockname: stock.name,
+        stock_id: stockId,
+        stock_name: stock.name,
         quantity: parsedQuantity,
         price: tradePrice,
         total: totalRevenue,
-        profitloss: profitLoss,
+        profit_loss: profitLoss,
         timestamp
       }]);
       
@@ -525,12 +525,12 @@ app.get('/api/transactions', async (req, res) => {
     const mappedTransactions = transactions.map(tx => ({
       id: tx.id,
       type: tx.type,
-      stockId: tx.stockid,
-      stockName: tx.stockname,
+      stockId: tx.stock_id,
+      stockName: tx.stock_name,
       quantity: tx.quantity,
       price: tx.price,
       total: tx.total,
-      profitLoss: tx.profitloss,
+      profitLoss: tx.profit_loss,
       timestamp: tx.timestamp
     }));
 
