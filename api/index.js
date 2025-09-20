@@ -6,7 +6,9 @@ const { v4: uuidv4 } = require('uuid');
 const dotenv = require('dotenv');
 
 // 加载环境变量（本地开发用，Vercel 会自动读取环境变量）
-dotenv.config({ path: '.env.local' });
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: '.env.local' });
+}
 
 // 初始化 Express 应用
 const app = express();
@@ -49,75 +51,109 @@ async function testSupabaseConnection() {
   }
 }
 
-// 初始化数据库表结构
 async function initDatabase() {
   try {
-    // 1. 创建表结构（使用 Supabase SQL 接口，需服务角色密钥）
+    // 1. 验证高权限密钥是否存在
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (serviceRoleKey) {
-      // 使用服务角色密钥创建表（权限更高）
-      const adminSupabase = createClient(supabaseUrl, serviceRoleKey);
-      
-      const { error: createError } = await adminSupabase.rpc('exec_sql', {
-        sql: `
-          -- 股票表
-          CREATE TABLE IF NOT EXISTS stocks (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            price REAL NOT NULL DEFAULT 0.01,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-          );
-
-          -- 用户表
-          CREATE TABLE IF NOT EXISTS "user" (
-            id INTEGER PRIMARY KEY DEFAULT 1,
-            balance REAL NOT NULL DEFAULT 100000.00,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(id)
-          );
-
-          -- 持仓表
-          CREATE TABLE IF NOT EXISTS portfolio (
-            id SERIAL PRIMARY KEY,
-            stockId TEXT NOT NULL,
-            stockName TEXT NOT NULL,
-            quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-            averagePrice REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (stockId) REFERENCES stocks(id),
-            UNIQUE(stockId)
-          );
-
-          -- 交易记录表
-          CREATE TABLE IF NOT EXISTS transactions (
-            id TEXT PRIMARY KEY,
-            type TEXT NOT NULL CHECK (type IN ('buy', 'sell')),
-            stockId TEXT NOT NULL,
-            stockName TEXT NOT NULL,
-            quantity INTEGER NOT NULL CHECK (quantity > 0),
-            price REAL NOT NULL CHECK (price > 0),
-            total REAL NOT NULL CHECK (total > 0),
-            profitLoss REAL,
-            timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (stockId) REFERENCES stocks(id)
-          );
-        `
-      });
-
-      if (createError) {
-        logError('创建表结构时警告（可能已存在）', createError);
-      }
-    } else {
-      log('警告：未配置 SUPABASE_SERVICE_ROLE_KEY，将使用匿名密钥初始化（可能权限不足）');
+    if (!serviceRoleKey) {
+      throw new Error('未配置 SUPABASE_SERVICE_ROLE_KEY，无法创建表结构（需要高权限）');
     }
 
-    // 2. 初始化默认股票数据（如果表为空）
-    const { data: stockCount } = await supabase.from('stocks').select('*', { count: 'exact', head: true });
+    // 创建高权限客户端
+    const adminSupabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false }
+    });
+
+    // 2. 检查并创建 exec_sql 函数（关键修复：先确保函数存在）
+    const createExecSqlFunction = `
+      CREATE OR REPLACE FUNCTION public.exec_sql(sql text)
+      RETURNS void AS $$
+      BEGIN
+        EXECUTE sql;
+      END;
+      $$ LANGUAGE plpgsql SECURITY DEFINER;
+      
+      GRANT EXECUTE ON FUNCTION public.exec_sql(text) TO anon, authenticated;
+    `;
+
+    const { error: execSqlError } = await adminSupabase.rpc('exec_sql', {
+      sql: createExecSqlFunction
+    });
+
+    // 处理函数创建可能的错误（首次创建时函数本身不存在，会报错，需特殊处理）
+    if (execSqlError && !execSqlError.message.includes('Could not find the function public.exec_sql')) {
+      // 仅忽略"函数不存在"的错误（首次执行时必然出现）
+      logError('创建 exec_sql 函数警告', execSqlError);
+    } else {
+      log('exec_sql 函数准备就绪');
+    }
+
+    // 3. 创建所有表结构（使用绝对路径 public.xxx 避免模式问题）
+    const createTablesSql = `
+      -- 股票表
+      CREATE TABLE IF NOT EXISTS public.stocks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        price REAL NOT NULL DEFAULT 0.01,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 用户表（用双引号处理关键字冲突）
+      CREATE TABLE IF NOT EXISTS public."user" (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        balance REAL NOT NULL DEFAULT 100000.00,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(id)
+      );
+
+      -- 持仓表
+      CREATE TABLE IF NOT EXISTS public.portfolio (
+        id SERIAL PRIMARY KEY,
+        stockId TEXT NOT NULL,
+        stockName TEXT NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
+        averagePrice REAL NOT NULL DEFAULT 0.01 CHECK (averagePrice > 0),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (stockId) REFERENCES public.stocks(id),
+        UNIQUE(stockId)
+      );
+
+      -- 交易记录表
+      CREATE TABLE IF NOT EXISTS public.transactions (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL CHECK (type IN ('buy', 'sell')),
+        stockId TEXT NOT NULL,
+        stockName TEXT NOT NULL,
+        quantity INTEGER NOT NULL CHECK (quantity > 0),
+        price REAL NOT NULL CHECK (price > 0),
+        total REAL NOT NULL CHECK (total > 0),
+        profitLoss REAL,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (stockId) REFERENCES public.stocks(id)
+      );
+    `;
+
+    // 执行表创建语句（使用 adminSupabase 确保权限）
+    const { error: createTableError } = await adminSupabase.rpc('exec_sql', {
+      sql: createTablesSql
+    });
+
+    if (createTableError) {
+      logError('表结构创建警告（可能已存在）', createTableError);
+    } else {
+      log('表结构创建/验证成功');
+    }
+
+    // 4. 初始化默认股票数据（仅表为空时插入）
+    const { count: stockCount } = await supabase
+      .from('stocks')
+      .select('id', { count: 'exact', head: true });
+
     if (stockCount === 0) {
-      const stocks = [
+      const defaultStocks = [
         { id: '600036', name: '招商银行', price: 32.65 },
         { id: '601318', name: '中国平安', price: 42.80 },
         { id: '600519', name: '贵州茅台', price: 1725.00 },
@@ -130,24 +166,38 @@ async function initDatabase() {
         { id: '600900', name: '长江电力', price: 22.76 }
       ];
 
-      const { error } = await supabase.from('stocks').insert(stocks);
-      if (error) throw error;
-      log('初始化默认股票数据成功', { count: stocks.length });
+      const { error: insertStockError } = await supabase
+        .from('stocks')
+        .insert(defaultStocks);
+
+      if (insertStockError) throw insertStockError;
+      log('默认股票数据初始化成功', { count: defaultStocks.length });
     }
 
-    // 3. 初始化用户数据
-    const { data: userData } = await supabase.from('user').select('*');
-    if (!userData || userData.length === 0) {
-      const { error } = await supabase.from('user').insert([
-        { id: 1, balance: 100000.00 }
-      ]);
-      if (error) throw error;
-      log('初始化用户数据成功');
+    // 5. 初始化默认用户数据（仅表为空时插入）
+    const { count: userCount } = await supabase
+      .from('user')
+      .select('id', { count: 'exact', head: true });
+
+    if (userCount === 0) {
+      const { error: insertUserError } = await supabase
+        .from('user')
+        .insert([{ id: 1, balance: 100000.00 }]);
+
+      if (insertUserError) throw insertUserError;
+      log('默认用户数据初始化成功');
     }
 
     log('数据库初始化完成');
     return true;
   } catch (error) {
+    // 特殊处理首次创建 exec_sql 函数时的预期错误
+    if (error.message.includes('Could not find the function public.exec_sql')) {
+      log('首次执行：exec_sql 函数不存在，已自动创建，建议重启服务器');
+      // 手动创建函数后重试初始化
+      return initDatabase();
+    }
+    
     logError('数据库初始化失败', error);
     return false;
   }
@@ -425,4 +475,392 @@ app.post('/api/buy', async (req, res) => {
         .from('user')
         .insert([{ id: 1, balance: 100000.00 }]);
       
-      userData = { id:
+            userData = { id: 1, balance: 100000.00 };
+    }
+
+    if (userData.balance < totalCost) {
+      return res.status(400).json({ 
+        error: '余额不足',
+        required: parseFloat(totalCost.toFixed(2)),
+        available: parseFloat(userData.balance.toFixed(2))
+      });
+    }
+
+    // 检查是否已有持仓
+    const { data: holdingData } = await supabase
+      .from('portfolio')
+      .select('*')
+      .eq('stockId', stockId)
+      .single();
+
+    if (holdingData) {
+      // 更新现有持仓
+      const newQuantity = holdingData.quantity + parsedQuantity;
+      const newTotalCost = (holdingData.averagePrice * holdingData.quantity) + totalCost;
+      const newAveragePrice = newTotalCost / newQuantity;
+      
+      await supabase
+        .from('portfolio')
+        .update({ 
+          quantity: newQuantity, 
+          averagePrice: newAveragePrice, 
+          updated_at: new Date()
+        })
+        .eq('id', holdingData.id);
+    } else {
+      // 创建新持仓
+      await supabase
+        .from('portfolio')
+        .insert([{
+          stockId, 
+          stockName: stock.name, 
+          quantity: parsedQuantity, 
+          averagePrice: tradePrice
+        }]);
+    }
+
+    // 更新用户余额
+    const newBalance = userData.balance - totalCost;
+    await supabase
+      .from('user')
+      .update({ 
+        balance: newBalance, 
+        updated_at: new Date()
+      })
+      .eq('id', 1);
+
+    // 记录交易
+    const txId = uuidv4();
+    const timestamp = new Date();
+    await supabase
+      .from('transactions')
+      .insert([{
+        id: txId, 
+        type: 'buy', 
+        stockId, 
+        stockName: stock.name, 
+        quantity: parsedQuantity, 
+        price: tradePrice, 
+        total: totalCost, 
+        timestamp
+      }]);
+    
+    log('股票买入成功', { 
+      stockId, 
+      quantity: parsedQuantity,
+      totalCost,
+      transactionId: txId
+    });
+    
+    res.json({
+      success: true,
+      transaction: {
+        id: txId,
+        type: 'buy',
+        stockId,
+        stockName: stock.name,
+        quantity: parsedQuantity,
+        price: tradePrice,
+        total: totalCost,
+        timestamp
+      },
+      newBalance: parseFloat(newBalance.toFixed(2))
+    });
+
+  } catch (error) {
+    logError('买入股票错误', error);
+    res.status(500).json({ error: `买入股票失败: ${error.message}` });
+  }
+});
+
+// 5. 卖出股票
+app.post('/api/sell', async (req, res) => {
+  try {
+    const { stockId, quantity, price } = req.body;
+    
+    // 验证输入
+    const stockIdValidation = validateStockId(stockId);
+    if (!stockIdValidation.valid) {
+      return res.status(400).json({ error: stockIdValidation.message });
+    }
+    
+    const quantityValidation = validateQuantity(quantity);
+    if (!quantityValidation.valid) {
+      return res.status(400).json({ error: quantityValidation.message });
+    }
+    const parsedQuantity = quantityValidation.parsed;
+    
+    // 价格可选，会在后续使用股票当前价格
+    let parsedPrice = null;
+    if (price !== undefined) {
+      const priceValidation = validatePrice(price);
+      if (!priceValidation.valid) {
+        return res.status(400).json({ error: priceValidation.message });
+      }
+      parsedPrice = priceValidation.parsed;
+    }
+
+    // 获取股票信息
+    const { data: stockData, error: stockError } = await supabase
+      .from('stocks')
+      .select('*')
+      .eq('id', stockId)
+      .single();
+    
+    if (stockError) {
+      // 获取所有可用股票ID
+      const { data: allStocks } = await supabase.from('stocks').select('id');
+      return res.status(404).json({ 
+        error: `股票不存在 (代码: ${stockId})`,
+        availableStocks: allStocks ? allStocks.map(row => row.id) : []
+      });
+    }
+    const stock = stockData;
+
+    // 检查持仓
+    const { data: holdingData, error: holdingError } = await supabase
+      .from('portfolio')
+      .select('*')
+      .eq('stockId', stockId)
+      .single();
+    
+    if (holdingError || !holdingData) {
+      return res.status(400).json({ error: `没有持仓的股票: ${stockId}` });
+    }
+    
+    if (holdingData.quantity < parsedQuantity) {
+      return res.status(400).json({ 
+        error: '持仓数量不足',
+        available: holdingData.quantity,
+        requested: parsedQuantity
+      });
+    }
+
+    // 计算收入
+    const tradePrice = parsedPrice || stock.price;
+    const totalRevenue = tradePrice * parsedQuantity;
+    const profitLoss = parseFloat(((tradePrice - holdingData.averagePrice) * parsedQuantity).toFixed(2));
+
+    // 获取用户余额
+    const { data: userData, error: userError } = await supabase
+      .from('user')
+      .select('*')
+      .eq('id', 1)
+      .single();
+    
+    if (userError || !userData) {
+      return res.status(500).json({ error: '用户数据不存在' });
+    }
+
+    // 更新用户余额
+    const newBalance = userData.balance + totalRevenue;
+    await supabase
+      .from('user')
+      .update({ 
+        balance: newBalance, 
+        updated_at: new Date()
+      })
+      .eq('id', 1);
+
+    // 更新持仓
+    if (holdingData.quantity === parsedQuantity) {
+      // 全部卖出，删除持仓
+      await supabase
+        .from('portfolio')
+        .delete()
+        .eq('id', holdingData.id);
+    } else {
+      // 部分卖出，更新数量
+      await supabase
+        .from('portfolio')
+        .update({ 
+          quantity: holdingData.quantity - parsedQuantity, 
+          updated_at: new Date()
+        })
+        .eq('id', holdingData.id);
+    }
+
+    // 记录交易
+    const txId = uuidv4();
+    const timestamp = new Date();
+    await supabase
+      .from('transactions')
+      .insert([{
+        id: txId, 
+        type: 'sell', 
+        stockId, 
+        stockName: stock.name, 
+        quantity: parsedQuantity, 
+        price: tradePrice, 
+        total: totalRevenue, 
+        profitLoss,
+        timestamp
+      }]);
+    
+    log('股票卖出成功', { 
+      stockId, 
+      quantity: parsedQuantity,
+      totalRevenue,
+      profitLoss,
+      transactionId: txId
+    });
+    
+    res.json({
+      success: true,
+      transaction: {
+        id: txId,
+        type: 'sell',
+        stockId,
+        stockName: stock.name,
+        quantity: parsedQuantity,
+        price: tradePrice,
+        total: totalRevenue,
+        profitLoss,
+        timestamp
+      },
+      newBalance: parseFloat(newBalance.toFixed(2))
+    });
+
+  } catch (error) {
+    logError('卖出股票错误', error);
+    res.status(500).json({ error: `卖出股票失败: ${error.message}` });
+  }
+});
+
+// 6. 获取交易记录（支持分页）
+app.get('/api/transactions', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // 获取总记录数
+    const { count: total } = await supabase
+      .from('transactions')
+      .select('*', { count: 'exact', head: true });
+    
+    // 获取当前页记录
+    const { data } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    log('获取交易记录成功', { 
+      page, 
+      limit, 
+      total,
+      currentCount: data ? data.length : 0 
+    });
+    
+    res.json({
+      transactions: data || [],
+      pagination: {
+        page,
+        limit,
+        total: total || 0,
+        pages: total ? Math.ceil(total / limit) : 0
+      }
+    });
+  } catch (error) {
+    logError('获取交易记录错误', error);
+    res.status(500).json({ error: `获取交易记录失败: ${error.message}` });
+  }
+});
+
+// 7. 重置数据库（开发环境用）
+app.post('/api/reset', async (req, res) => {
+  // 只允许在开发环境使用
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: '仅开发环境支持重置操作' });
+  }
+  
+  try {
+    // 使用服务角色密钥执行删除操作（需要更高权限）
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return res.status(403).json({ error: '未配置 SUPABASE_SERVICE_ROLE_KEY，无法执行重置' });
+    }
+    
+    const adminSupabase = createClient(supabaseUrl, serviceRoleKey);
+    
+    // 清空数据但保留表结构
+    await adminSupabase.from('transactions').delete().neq('id', '');
+    await adminSupabase.from('portfolio').delete().neq('id', '');
+    await adminSupabase
+      .from('user')
+      .update({ balance: 100000.00, updated_at: new Date() })
+      .eq('id', 1);
+    
+    log('数据库已重置');
+    res.json({ success: true, message: '数据库已重置' });
+  } catch (error) {
+    logError('重置数据库错误', error);
+    res.status(500).json({ error: `重置数据库失败: ${error.message}` });
+  }
+});
+
+// 根路由测试
+app.get('/', (req, res) => {
+  res.json({ 
+    message: '股票交易API服务运行中',
+    database: 'Supabase',
+    environment: process.env.NODE_ENV || 'development',
+    allowedOrigins: allowedOrigins,
+    endpoints: {
+      stocks: '/api/stocks',
+      updatePrice: '/api/stocks/update-price',
+      portfolio: '/api/portfolio',
+      buy: '/api/buy',
+      sell: '/api/sell',
+      transactions: '/api/transactions',
+      reset: '/api/reset (仅开发环境)'
+    }
+  });
+});
+
+// 错误处理中间件
+app.use((err, req, res, next) => {
+  logError('未捕获的异常', err);
+  res.status(500).json({
+    error: '服务器发生未知错误',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// 启动服务（本地开发用，Vercel 会自动处理）
+async function startServer() {
+  try {
+    // 测试 Supabase 连接
+    const isConnected = await testSupabaseConnection();
+    if (!isConnected) {
+      log('Supabase 连接失败，5秒后重试...');
+      setTimeout(startServer, 5000);
+      return;
+    }
+
+    console.log('====================================');
+    
+    // 初始化数据库
+    await initDatabase();
+    
+    // 本地开发才需要监听端口
+    if (process.env.NODE_ENV !== 'production') {
+      const PORT = process.env.PORT || 3000;
+      app.listen(PORT, () => {
+        log(`服务运行在 http://localhost:${PORT}`);
+      });
+    }
+  } catch (error) {
+    logError('启动服务失败', error);
+    process.exit(1);
+  }
+}
+
+// 启动服务器（本地开发时执行）
+if (process.env.NODE_ENV !== 'production') {
+  startServer();
+}
+
+// 导出 app 供 Vercel Serverless 函数使用
+module.exports = app;
